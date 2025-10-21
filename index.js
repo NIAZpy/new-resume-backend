@@ -53,10 +53,12 @@ const resumeSchema = new mongoose.Schema({
   experience: Array,
   education: Array,
   skills: Array,
+  languages: Array,
   projects: Array,
   links: Array,
   awards: Array,
   template: { type: String, default: 'classic' },
+  profilePhoto: { type: String }, // To store the Base64 encoded image
 }, { timestamps: true });
 
 const Resume = mongoose.model('Resume', resumeSchema);
@@ -199,6 +201,30 @@ app.post('/api/resume', auth, isCandidate, async (req, res) => {
   } catch (error) {
     console.error('Error saving/updating resume:', error);
     res.status(500).json({ message: 'Failed to save resume.' });
+  }
+});
+
+// Profile Photo Upload
+app.post('/api/resume/photo', auth, isCandidate, upload.single('profilePhoto'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No file uploaded.' });
+    }
+
+    const resume = await Resume.findOne({ user: req.user.id });
+    if (!resume) {
+      return res.status(404).json({ msg: 'Resume not found. Please save your resume first.' });
+    }
+
+    const photoBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+
+    resume.profilePhoto = photoBase64;
+    await resume.save();
+
+    res.json({ msg: 'Profile photo uploaded successfully.', profilePhoto: photoBase64 });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
   }
 });
 
@@ -401,46 +427,6 @@ app.get('/api/users', auth, isAdmin, async (req, res) => {
   try {
     const users = await User.find().select('-password');
     res.json(users);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-
-app.delete('/api/users/:id', auth, isAdmin, async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) {
-      return res.status(404).json({ msg: 'User not found' });
-    }
-    if (user.id === req.user.id) {
-      return res.status(400).json({ msg: 'You cannot delete your own account.' });
-    }
-    await user.remove();
-    res.json({ msg: 'User removed' });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-
-app.put('/api/users/:id/role', auth, isAdmin, async (req, res) => {
-  const { role } = req.body;
-  const { id } = req.params;
-  if (!['Candidate', 'Recruiter', 'Admin'].includes(role)) {
-    return res.status(400).json({ msg: 'Invalid role specified.' });
-  }
-  try {
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ msg: 'User not found' });
-    }
-    if (user.id === req.user.id) {
-      return res.status(400).json({ msg: 'You cannot change your own role.' });
-    }
-    user.role = role;
-    await user.save({ validateModifiedOnly: true });
-    res.json(user);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
